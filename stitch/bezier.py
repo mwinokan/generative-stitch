@@ -10,6 +10,8 @@ class Bezier:
         self.nodes = np.asfortranarray(coords).T
         self.curve = curve
 
+    ### FACTORIES
+
     @classmethod
     def from_coords(cls, coords):
         if isinstance(coords, str):
@@ -32,6 +34,8 @@ class Bezier:
         if optimise:
             coords = optimise_coords(coords)
         return cls.from_coords(coords)
+
+    ### METHODS
 
     def plot(
         self,
@@ -86,6 +90,44 @@ class Bezier:
 
         mrich.writing(path)
         df.to_csv(path, index=False)
+
+    def write_svg(
+        self,
+        path,
+        num_pts=256,
+        stroke="black",
+        stroke_width=1,
+        scale: int = 100,
+        padding=1,
+    ):
+        assert path.endswith(".svg")
+
+        s_vals = np.linspace(0.0, 1.0, num_pts)
+        points = self.curve.evaluate_multi(s_vals)
+        xs, ys = points[0] * scale, points[1] * scale
+
+        min_x, max_x = xs.min(), xs.max()
+        min_y, max_y = ys.min(), ys.max()
+        width = max_x - min_x
+        height = max_y - min_y
+
+        commands = [f"M {xs[0]},{ys[0]}"]
+        commands += [f"L {x},{y}" for x, y in zip(xs[1:], ys[1:])]
+        d = " ".join(commands)
+
+        svg = (
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'viewBox="{min_x - padding} {min_y - padding} '
+            f'{width + 2 * padding} {height + 2 * padding}">\n'
+            f'  <path d="{d}" fill="none" stroke="{stroke}" stroke-width="{stroke_width}" />\n'
+            f"</svg>\n"
+        )
+
+        mrich.writing(path)
+        with open(path, "w") as f:
+            f.write(svg)
+
+    ### DUNDERS
 
     def __len__(self):
         return len(self.nodes[0])
