@@ -1,2 +1,2 @@
 from .canvas import Canvas
-from .bezier import Bezier
+from .bezier import Bezier, CompoundBezier

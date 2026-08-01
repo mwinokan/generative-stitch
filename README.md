@@ -2,6 +2,6 @@
 
 ## To-Do's
 
-- [ ] piecewise bezier curves
+- [x] piecewise bezier curves
 - [x] dynamic radii
 - [ ] rail 'sleepers'
