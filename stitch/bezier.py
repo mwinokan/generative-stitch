@@ -54,8 +54,10 @@ class Bezier:
         nodes: bool = True,
         lines: bool | None = None,
         fill: bool | None = None,
+        rails: bool = False,
         ax=None,
         color=None,
+        scale: int = 100,
         **kwargs,
     ):
         import matplotlib.pyplot as plt
@@ -77,20 +79,39 @@ class Bezier:
                 fill = True
 
         if fill:
-            ax.fill(*self.nodes, facecolor=(0, 0, 1, 0.3))
+            ax.fill(*(self.nodes * scale), facecolor=(0, 0, 1, 0.3))
 
         if nodes:
-            ax.scatter(*self.nodes, c="black")
+            ax.scatter(*(self.nodes * scale), c="black")
 
         if lines:
-            ax.plot(*self.nodes, c="black")
+            ax.plot(*(self.nodes * scale), c="black")
 
-        return self.curve.plot(
-            num_pts=num_pts,
-            ax=ax,
+        sampled = self.sample(num_pts=num_pts, rails=rails, scale=scale)
+        xy = sampled["center"]
+        ax.plot(
+            xy[:, 0],
+            xy[:, 1],
             color=color,
             **kwargs,
         )
+
+        if rails:
+            rail_color = (*color, 0.5) if len(color) == 3 else color
+            ax.plot(
+                sampled["rail_left"][:, 0],
+                sampled["rail_left"][:, 1],
+                color=rail_color,
+                linewidth=0.5,
+            )
+            ax.plot(
+                sampled["rail_right"][:, 0],
+                sampled["rail_right"][:, 1],
+                color=rail_color,
+                linewidth=0.5,
+            )
+
+        return ax
 
     def to_json(self, path):
 
@@ -105,6 +126,44 @@ class Bezier:
             mrich.writing(path)
             json.dump(data, f, indent=2)
 
+    def sample(self, num_pts=256, scale=1, rails=False):
+        """Sample the curve and optionally compute offset rail curves.
+
+        Parameters
+        ----------
+        num_pts : int
+            Number of sample points along the curve.
+        scale : float
+            Maps the [0,1) input space to [0,scale).
+        rails : bool
+            If True, also compute offset curves at ±radius.
+
+        Returns
+        -------
+        dict with keys:
+            'center' : ndarray, shape (num_pts, 2)
+            'rail_left' : ndarray or None
+            'rail_right' : ndarray or None
+        """
+        s_vals = np.linspace(0.0, 1.0, num_pts)
+        points = self.curve.evaluate_multi(s_vals)
+        xy = points.T * scale
+
+        result = dict(center=xy, rail_left=None, rail_right=None)
+
+        if rails:
+            tangents = np.gradient(xy, axis=0)
+            lengths = np.linalg.norm(tangents, axis=1, keepdims=True)
+            lengths = np.where(lengths == 0, 1, lengths)
+            tangents = tangents / lengths
+            normals = np.column_stack([-tangents[:, 1], tangents[:, 0]])
+
+            r = self.radius
+            result["rail_left"] = xy + normals * r
+            result["rail_right"] = xy - normals * r
+
+        return result
+
     def to_svg(
         self,
         path,
@@ -112,7 +171,7 @@ class Bezier:
         stroke="black",
         scale: int = 100,
         padding=1,
-        rails: bool = True,
+        rails: bool = False,
         max_error=0.001,
     ):
         """Write the curve as an SVG with fitted cubic Beziers.
@@ -132,10 +191,8 @@ class Bezier:
 
         assert path.endswith(".svg")
 
-        # Sample the high-degree curve and scale to output space
-        s_vals = np.linspace(0.0, 1.0, num_pts)
-        points = self.curve.evaluate_multi(s_vals)
-        xy = points.T * scale  # shape (num_pts, 2)
+        sampled = self.sample(num_pts=num_pts, scale=scale, rails=rails)
+        xy = sampled["center"]
 
         # Fit cubic Beziers to the center curve
         beziers = fit_curve(xy, max_error)
@@ -144,28 +201,15 @@ class Bezier:
         paths = f'  <path d="{d_center}" fill="none" stroke="{stroke}" stroke-width="{self.radius}" />\n'
 
         if rails:
-            # Compute unit normals at each sample point
-            tangents = np.gradient(xy, axis=0)
-            lengths = np.linalg.norm(tangents, axis=1, keepdims=True)
-            lengths = np.where(lengths == 0, 1, lengths)
-            tangents = tangents / lengths
-            normals = np.column_stack([-tangents[:, 1], tangents[:, 0]])
-
-            r = self.radius
-
-            # Offset curves
-            rail_left = xy + normals * r
-            rail_right = xy - normals * r
-
-            d_left = beziers_to_svg_path(fit_curve(rail_left, max_error))
-            d_right = beziers_to_svg_path(fit_curve(rail_right, max_error))
+            d_left = beziers_to_svg_path(fit_curve(sampled["rail_left"], max_error))
+            d_right = beziers_to_svg_path(fit_curve(sampled["rail_right"], max_error))
 
             paths += f'  <path d="{d_left}" fill="none" stroke="{stroke}" stroke-width="0.5" />\n'
             paths += f'  <path d="{d_right}" fill="none" stroke="{stroke}" stroke-width="0.5" />\n'
 
         # Compute viewBox from all rendered points
         if rails:
-            all_pts = np.vstack([xy, rail_left, rail_right])
+            all_pts = np.vstack([xy, sampled["rail_left"], sampled["rail_right"]])
         else:
             all_pts = xy
         min_x, min_y = all_pts.min(axis=0)
