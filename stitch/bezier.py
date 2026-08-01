@@ -44,6 +44,64 @@ class CompoundBezier:
 
         return self
 
+    @classmethod
+    def from_waypoints(cls, points, radius=1, closed=False):
+        """Fit a C1-continuous chain of cubic Béziers through waypoints.
+
+        Parameters
+        ----------
+        points : array-like, shape (N, 2)
+            Waypoints the curve must pass through.
+        radius : float
+            Default radius for generated curves.
+        closed : bool
+            If True, close the loop with C1 continuity at the join.
+        """
+        points = np.asarray(points, dtype=float)
+        n = len(points)
+        if n < 2:
+            raise ValueError("Need at least 2 points")
+
+        if closed:
+            # Wrap: append first point so the loop closes
+            points = np.vstack([points, points[:1]])
+            n = len(points)
+
+        # Compute tangents via Catmull-Rom
+        tangents = np.zeros_like(points)
+        if closed:
+            for i in range(1, n - 1):
+                tangents[i] = (points[i + 1] - points[i - 1]) / 2
+            # Wrap tangent at the seam
+            tangents[0] = (points[1] - points[-2]) / 2
+            tangents[-1] = tangents[0]
+        else:
+            for i in range(1, n - 1):
+                tangents[i] = (points[i + 1] - points[i - 1]) / 2
+            tangents[0] = points[1] - points[0]
+            tangents[-1] = points[-1] - points[-2]
+
+        # Build cubic segments: P0, P0+t/3, P1-t/3, P1
+        curves = []
+        for i in range(n - 1):
+            p0 = points[i]
+            p1 = points[i + 1]
+            c0 = p0 + tangents[i] / 3
+            c1 = p1 - tangents[i + 1] / 3
+            coords = np.array([p0, c0, c1, p1])
+            curves.append(Bezier.from_coords(coords, radius=radius))
+
+        return cls(curves=curves, radius=radius, connect=False)
+
+    @classmethod
+    def random(cls, n, optimise: bool = True, closed: bool = False):
+        x = np.random.random_sample(n)
+        y = np.random.random_sample(n)
+        coords = np.asfortranarray([x, y]).T
+        if optimise:
+            coords = optimise_coords(coords)
+        return cls.from_waypoints(coords, closed=True)
+
     ### METHODS
 
     def append(self, curve):
@@ -145,7 +203,9 @@ class CompoundBezier:
             parts.append(pts)
 
         xy = np.vstack(parts)
-        result = dict(center=xy, rail_left=None, rail_right=None, segments=segment_boundaries)
+        result = dict(
+            center=xy, rail_left=None, rail_right=None, segments=segment_boundaries
+        )
 
         if rails:
             tangents = np.gradient(xy, axis=0)
@@ -192,7 +252,16 @@ class CompoundBezier:
 
         return result
 
-    def plot(self, num_pts=256, nodes=False, rails=False, ax=None, color=None, scale=100, **kwargs):
+    def plot(
+        self,
+        num_pts=256,
+        nodes=False,
+        rails=False,
+        ax=None,
+        color=None,
+        scale=100,
+        **kwargs,
+    ):
         import matplotlib.pyplot as plt
 
         if ax is None:
