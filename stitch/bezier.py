@@ -99,21 +99,38 @@ class Bezier:
         stroke_width=1,
         scale: int = 100,
         padding=1,
+        max_error=0.001,
     ):
+        """Write the curve as an SVG with fitted cubic Beziers.
+
+        Parameters
+        ----------
+        num_pts : int
+            Number of sample points used for curve fitting.
+        scale : int
+            Maps the [0,1) input space to [0,scale) in the SVG.
+        max_error : float
+            Maximum squared error for Bezier fitting (in scaled coords).
+        """
+        from .fitcurves import beziers_to_svg_path, fit_curve
+
         assert path.endswith(".svg")
 
+        # Sample the high-degree curve and scale to output space
         s_vals = np.linspace(0.0, 1.0, num_pts)
         points = self.curve.evaluate_multi(s_vals)
-        xs, ys = points[0] * scale, points[1] * scale
+        xy = points.T * scale  # shape (num_pts, 2)
 
+        # Fit cubic Beziers to the sampled points
+        beziers = fit_curve(xy, max_error)
+        d = beziers_to_svg_path(beziers)
+
+        # Compute viewBox from sampled points
+        xs, ys = xy[:, 0], xy[:, 1]
         min_x, max_x = xs.min(), xs.max()
         min_y, max_y = ys.min(), ys.max()
         width = max_x - min_x
         height = max_y - min_y
-
-        commands = [f"M {xs[0]},{ys[0]}"]
-        commands += [f"L {x},{y}" for x, y in zip(xs[1:], ys[1:])]
-        d = " ".join(commands)
 
         svg = (
             f'<svg xmlns="http://www.w3.org/2000/svg" '
