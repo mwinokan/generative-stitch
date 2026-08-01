@@ -6,22 +6,23 @@ import json
 
 class Bezier:
 
-    def __init__(self, coords, curve):
+    def __init__(self, coords, curve, radius=1):
         self.coords = np.asfortranarray(coords)
         self.nodes = np.asfortranarray(coords).T
         self.curve = curve
+        self.radius = radius
 
     ### FACTORIES
 
     @classmethod
-    def from_coords(cls, coords):
+    def from_coords(cls, coords, radius=1):
         if isinstance(coords, str):
             return cls.from_json(coords)
 
         self = cls.__new__(cls)
         nodes = np.asfortranarray(coords).T
         curve = bezier.Curve.from_nodes(nodes)
-        self.__init__(coords=coords, curve=curve)
+        self.__init__(coords=coords, curve=curve, radius=radius)
         return self
 
     @classmethod
@@ -42,7 +43,8 @@ class Bezier:
             data = json.load(f)
 
         coords = data["coords"]
-        return cls.from_coords(coords)
+        radius = data["radius"]
+        return cls.from_coords(coords, radius=radius)
 
     ### METHODS
 
@@ -94,7 +96,10 @@ class Bezier:
 
         assert path.endswith(".json")
 
-        data = dict(coords=[list(c) for c in self.coords])
+        data = dict(
+            coords=[list(c) for c in self.coords],
+            radius=self.radius,
+        )
 
         with open(path, "wt") as f:
             mrich.writing(path)
@@ -105,7 +110,6 @@ class Bezier:
         path,
         num_pts=256,
         stroke="black",
-        stroke_width=1,
         scale: int = 100,
         padding=1,
         max_error=0.001,
@@ -145,7 +149,7 @@ class Bezier:
             f'<svg xmlns="http://www.w3.org/2000/svg" '
             f'viewBox="{min_x - padding} {min_y - padding} '
             f'{width + 2 * padding} {height + 2 * padding}">\n'
-            f'  <path d="{d}" fill="none" stroke="{stroke}" stroke-width="{stroke_width}" />\n'
+            f'  <path d="{d}" fill="none" stroke="{stroke}" stroke-width="{self.radius}" />\n'
             f"</svg>\n"
         )
 
