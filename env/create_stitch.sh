@@ -1,0 +1,9 @@
+#!/bin/bash
+
+source $CONDA_SHELL
+
+mamba create -p env/stitch python==3.12 -y
+mamba activate env/stitch
+
+pip install bezier[full] ipykernel
+pip install -e .
