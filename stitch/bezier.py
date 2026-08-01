@@ -1,8 +1,6 @@
+import mrich
 import bezier
 import numpy as np
-import matplotlib.pyplot as plt
-from python_tsp.distances import euclidean_distance_matrix
-from python_tsp.heuristics import solve_tsp_local_search
 
 
 class Bezier:
@@ -14,6 +12,12 @@ class Bezier:
 
     @classmethod
     def from_coords(cls, coords):
+        if isinstance(coords, str):
+            from pandas import read_csv
+
+            df = read_csv(coords)
+            coords = df[["x", "y"]].values
+
         self = cls.__new__(cls)
         nodes = np.asfortranarray(coords).T
         curve = bezier.Curve.from_nodes(nodes)
@@ -33,10 +37,13 @@ class Bezier:
         self,
         num_pts=256,
         nodes: bool = True,
-        lines: bool = True,
+        lines: bool | None = None,
+        fill: bool | None = None,
         ax=None,
+        color=None,
         **kwargs,
     ):
+        import matplotlib.pyplot as plt
 
         if not ax:
             fig, ax = plt.subplots(
@@ -44,20 +51,50 @@ class Bezier:
                 layout="constrained",
             )
 
+        color = color or (0, 0, 1)
+
+        if lines is None and fill is None:
+            if len(self) > 4:
+                lines = True
+                fill = False
+            else:
+                lines = False
+                fill = True
+
+        if fill:
+            ax.fill(*self.nodes, facecolor=(0, 0, 1, 0.3))
+
         if nodes:
-            ax.scatter(*self.nodes)
+            ax.scatter(*self.nodes, c="black")
 
         if lines:
-            ax.plot(*self.nodes)
+            ax.plot(*self.nodes, c="black")
 
         return self.curve.plot(
             num_pts=num_pts,
             ax=ax,
+            color=color,
             **kwargs,
         )
 
+    def write_coords(self, path):
+        from pandas import DataFrame
+
+        assert path.endswith(".csv")
+
+        df = DataFrame(dict(x=self.nodes[0], y=self.nodes[1]))
+
+        mrich.writing(path)
+        df.to_csv(path, index=False)
+
+    def __len__(self):
+        return len(self.nodes[0])
+
 
 def optimise_coords(coords):
+    from python_tsp.distances import euclidean_distance_matrix
+    from python_tsp.heuristics import solve_tsp_local_search
+
     coords = np.array(coords)
     distance_matrix = euclidean_distance_matrix(coords)
     permutation, distance = solve_tsp_local_search(distance_matrix)
