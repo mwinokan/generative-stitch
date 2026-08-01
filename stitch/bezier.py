@@ -112,6 +112,7 @@ class Bezier:
         stroke="black",
         scale: int = 100,
         padding=1,
+        rails: bool = True,
         max_error=0.001,
     ):
         """Write the curve as an SVG with fitted cubic Beziers.
@@ -122,6 +123,8 @@ class Bezier:
             Number of sample points used for curve fitting.
         scale : int
             Maps the [0,1) input space to [0,scale) in the SVG.
+        rails : bool
+            If True, include offset curves (locus) at ±radius from the center.
         max_error : float
             Maximum squared error for Bezier fitting (in scaled coords).
         """
@@ -134,14 +137,39 @@ class Bezier:
         points = self.curve.evaluate_multi(s_vals)
         xy = points.T * scale  # shape (num_pts, 2)
 
-        # Fit cubic Beziers to the sampled points
+        # Fit cubic Beziers to the center curve
         beziers = fit_curve(xy, max_error)
-        d = beziers_to_svg_path(beziers)
+        d_center = beziers_to_svg_path(beziers)
 
-        # Compute viewBox from sampled points
-        xs, ys = xy[:, 0], xy[:, 1]
-        min_x, max_x = xs.min(), xs.max()
-        min_y, max_y = ys.min(), ys.max()
+        paths = f'  <path d="{d_center}" fill="none" stroke="{stroke}" stroke-width="{self.radius}" />\n'
+
+        if rails:
+            # Compute unit normals at each sample point
+            tangents = np.gradient(xy, axis=0)
+            lengths = np.linalg.norm(tangents, axis=1, keepdims=True)
+            lengths = np.where(lengths == 0, 1, lengths)
+            tangents = tangents / lengths
+            normals = np.column_stack([-tangents[:, 1], tangents[:, 0]])
+
+            r = self.radius
+
+            # Offset curves
+            rail_left = xy + normals * r
+            rail_right = xy - normals * r
+
+            d_left = beziers_to_svg_path(fit_curve(rail_left, max_error))
+            d_right = beziers_to_svg_path(fit_curve(rail_right, max_error))
+
+            paths += f'  <path d="{d_left}" fill="none" stroke="{stroke}" stroke-width="0.5" />\n'
+            paths += f'  <path d="{d_right}" fill="none" stroke="{stroke}" stroke-width="0.5" />\n'
+
+        # Compute viewBox from all rendered points
+        if rails:
+            all_pts = np.vstack([xy, rail_left, rail_right])
+        else:
+            all_pts = xy
+        min_x, min_y = all_pts.min(axis=0)
+        max_x, max_y = all_pts.max(axis=0)
         width = max_x - min_x
         height = max_y - min_y
 
@@ -149,7 +177,7 @@ class Bezier:
             f'<svg xmlns="http://www.w3.org/2000/svg" '
             f'viewBox="{min_x - padding} {min_y - padding} '
             f'{width + 2 * padding} {height + 2 * padding}">\n'
-            f'  <path d="{d}" fill="none" stroke="{stroke}" stroke-width="{self.radius}" />\n'
+            f"{paths}"
             f"</svg>\n"
         )
 
