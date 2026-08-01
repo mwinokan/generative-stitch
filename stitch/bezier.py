@@ -72,6 +72,9 @@ class Bezier:
         self.coords = np.asfortranarray(list(coords) + [depart, arrive, coords[0]])
         self.nodes = self.coords.T
         self.curve = bezier.Curve.from_nodes(self.nodes)
+        if r := self.radius_curve:
+            r.coords[1][-1] = r.coords[1][0]
+            self.radius_curve = Bezier.from_coords(r.coords)
 
     def plot(
         self,
