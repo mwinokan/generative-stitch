@@ -38,6 +38,16 @@ class Bezier:
         return cls.from_coords(coords)
 
     @classmethod
+    def random_profile(cls, n: int = 6, aspect: float = 5, taper: bool = True):
+        x = np.linspace(0, aspect, n)
+        y = np.random.random_sample(n)
+        if taper:
+            y[0] = 0.0
+            y[-1] = 0.0
+        coords = np.asfortranarray([x, y]).T
+        return cls.from_coords(coords)
+
+    @classmethod
     def from_json(cls, path):
 
         assert path.endswith(".json")
