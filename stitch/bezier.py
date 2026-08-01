@@ -6,23 +6,26 @@ import json
 
 class Bezier:
 
-    def __init__(self, coords, curve, radius=1):
+    def __init__(self, coords, curve, radius=1, radius_curve=None):
         self.coords = np.asfortranarray(coords)
         self.nodes = np.asfortranarray(coords).T
         self.curve = curve
         self.radius = radius
+        self.radius_curve = radius_curve
 
     ### FACTORIES
 
     @classmethod
-    def from_coords(cls, coords, radius=1):
+    def from_coords(cls, coords, radius=1, radius_curve=None):
         if isinstance(coords, str):
             return cls.from_json(coords)
 
         self = cls.__new__(cls)
         nodes = np.asfortranarray(coords).T
         curve = bezier.Curve.from_nodes(nodes)
-        self.__init__(coords=coords, curve=curve, radius=radius)
+        self.__init__(
+            coords=coords, curve=curve, radius=radius, radius_curve=radius_curve
+        )
         return self
 
     @classmethod
@@ -44,9 +47,21 @@ class Bezier:
 
         coords = data["coords"]
         radius = data["radius"]
-        return cls.from_coords(coords, radius=radius)
+        radius_curve = None
+        if "radius_curve" in data:
+            radius_curve = cls.from_coords(data["radius_curve"])
+        return cls.from_coords(coords, radius=radius, radius_curve=radius_curve)
 
     ### METHODS
+
+    def close(self):
+        """Close the curve into a smooth loop with C1 continuity at the join."""
+        coords = np.array(self.coords)
+        depart = 2 * coords[-1] - coords[-2]
+        arrive = 2 * coords[0] - coords[1]
+        self.coords = np.asfortranarray(list(coords) + [depart, arrive, coords[0]])
+        self.nodes = self.coords.T
+        self.curve = bezier.Curve.from_nodes(self.nodes)
 
     def plot(
         self,
@@ -67,6 +82,8 @@ class Bezier:
                 figsize=(4, 4),
                 layout="constrained",
             )
+
+        ax.set_aspect("equal")
 
         color = color or (0, 0, 1)
 
@@ -122,6 +139,9 @@ class Bezier:
             radius=self.radius,
         )
 
+        if self.radius_curve is not None:
+            data["radius_curve"] = [list(c) for c in self.radius_curve.coords]
+
         with open(path, "wt") as f:
             mrich.writing(path)
             json.dump(data, f, indent=2)
@@ -158,7 +178,23 @@ class Bezier:
             tangents = tangents / lengths
             normals = np.column_stack([-tangents[:, 1], tangents[:, 0]])
 
-            r = self.radius
+            if self.radius_curve is not None:
+                # Compute cumulative arc length, normalized to [0, 1]
+                seg_lengths = np.linalg.norm(np.diff(xy, axis=0), axis=1)
+                arc = np.concatenate([[0], np.cumsum(seg_lengths)])
+                arc /= arc[-1]
+
+                # Evaluate radius_curve at arc-length positions
+                rc_points = self.radius_curve.curve.evaluate_multi(arc)
+                r_values = rc_points[1]  # y-axis = radius shape
+                # Scale so y-max maps to self.radius
+                y_max = r_values.max()
+                if y_max > 0:
+                    r_values = r_values * (self.radius / y_max)
+                r = r_values[:, np.newaxis]
+            else:
+                r = self.radius
+
             result["rail_left"] = xy + normals * r
             result["rail_right"] = xy - normals * r
 
