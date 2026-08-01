@@ -1,6 +1,7 @@
 import mrich
 import bezier
 import numpy as np
+import json
 
 
 class Bezier:
@@ -15,10 +16,7 @@ class Bezier:
     @classmethod
     def from_coords(cls, coords):
         if isinstance(coords, str):
-            from pandas import read_csv
-
-            df = read_csv(coords)
-            coords = df[["x", "y"]].values
+            return cls.from_json(coords)
 
         self = cls.__new__(cls)
         nodes = np.asfortranarray(coords).T
@@ -33,6 +31,17 @@ class Bezier:
         coords = np.asfortranarray([x, y]).T
         if optimise:
             coords = optimise_coords(coords)
+        return cls.from_coords(coords)
+
+    @classmethod
+    def from_json(cls, path):
+
+        assert path.endswith(".json")
+
+        with open(path, "rt") as f:
+            data = json.load(f)
+
+        coords = data["coords"]
         return cls.from_coords(coords)
 
     ### METHODS
@@ -81,17 +90,17 @@ class Bezier:
             **kwargs,
         )
 
-    def write_coords(self, path):
-        from pandas import DataFrame
+    def to_json(self, path):
 
-        assert path.endswith(".csv")
+        assert path.endswith(".json")
 
-        df = DataFrame(dict(x=self.nodes[0], y=self.nodes[1]))
+        data = dict(coords=[list(c) for c in self.coords])
 
-        mrich.writing(path)
-        df.to_csv(path, index=False)
+        with open(path, "wt") as f:
+            mrich.writing(path)
+            json.dump(data, f, indent=2)
 
-    def write_svg(
+    def to_svg(
         self,
         path,
         num_pts=256,

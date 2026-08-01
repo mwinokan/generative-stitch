@@ -3,4 +3,5 @@ env/stitch/
 *.egg-info
 *.pyc
 notebooks/*.csv
+notebooks/*.json
 notebooks/*.svg
